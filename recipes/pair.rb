@@ -4,6 +4,7 @@
 # Recipe:: pair
 #
 # Copyright 2011, Opscode, Inc
+# Copyright 2014, La Presse
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +19,6 @@
 # limitations under the License.
 #
 
-#require 'chef/shell_out'
 require 'mixlib/shellout'
 
 include_recipe "drbd"
@@ -32,7 +32,7 @@ end
 remote = search(:node, "name:#{node['drbd']['remote_host']}")[0]
 
 
-## FIXME adjust?
+## FIXME need to adjust, stuff is probably missing
 # http://www.drbd.org/users-guide/s-reconfigure.html
 template "/etc/drbd.d/#{resource}.res" do
   source "res.erb"
@@ -62,22 +62,16 @@ end
 execute "drbdadm-create-#{resource}" do
   command "drbdadm create-md #{resource}"
   subscribes :run, "template[/etc/drbd.d/#{resource}.res]"
-  #notifies :restart, "service[drbd]", :immediately
   notifies :run, "execute[drbdadm-up-#{resource}]", :immediately
   not_if do
     cmd = Mixlib::ShellOut.new("drbdadm show-gi pair")
     cmd.run_command.status == 0
   end
-  #not_if "drbdadm show-gi #{resource}"
-  #action :nothing
 end
 
-# FIXME only_if / not_if check need work...
 execute "drbdadm-up-#{resource}" do
   command "drbdadm up #{resource}"
   only_if %Q( drbd-overview | grep "0:#{resource}/0  Unconfigured")
-  ## FIXME FIXME when to run? always?
-  #action :nothing
   notifies :run, "execute[drbdadm-set-primary-#{resource}]", :immediately
 end
 
@@ -92,14 +86,6 @@ execute "drbdadm-set-primary-#{resource}" do
       cmd = Mixlib::ShellOut.new(cmd)
       break true if cmd.run_command.status == 0
     end
-
-#    isactivecmd = Mixlib::ShellOut.new(%Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"))
-#    isactive = isactivecmd.run_command.status == 0
-#    yield true if isactive
-#
-#    ismountcmd = Mixlib::ShellOut.new("mount | grep #{node['drbd']['dev']}")
-#    mounted = ismountcmd.run_command.status == 0
-#    yield true if mounted
   }
   only_if {
     cmd = Mixlib::ShellOut.new("drbdadm show-gi #{resource}")
@@ -126,13 +112,13 @@ execute "mkfs-#{resource}" do
   only_if { node['drbd']['master'] && !node['drbd']['configured'] }
 end
 
-# prepare our mount point
+# prepare our mount point on both primary and secondary (ready for failover)
 directory node['drbd']['mount'] do
-  #only_if { node['drbd']['master'] && !node['drbd']['configured'] }
   action :create
 end
 
-#mount -t xfs -o rw /dev/drbd0 /shared
+# Mount it only on the primary
+# FIXME what to do if our primary is now turned into a secondary?
 mount node['drbd']['mount'] do
   device node['drbd']['dev']
   fstype node['drbd']['fs_type']
@@ -141,7 +127,7 @@ mount node['drbd']['mount'] do
   notifies :run, "ruby_block[set drbd configured flag]", :immediately
 end
 
-#hack to get around the mount failing
+# FIXME Hum, no not_if/only_if?
 ruby_block "set drbd configured flag" do
   block do
     node.set['drbd']['configured'] = true
