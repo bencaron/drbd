@@ -20,8 +20,26 @@
 #prime the search to avoid 2 masters
 node.save unless Chef::Config[:solo]
 
-package "drbd8-utils" do
-  action :install
+# Ok, why does the docs say "redhat" but my systems says rhel??
+if node.platform_family?("centos", "redhat", "rhel", "fedora")
+  utilspkg = "drbd#{node['drbd']['version'].sub('.','')}-utils"
+  kmodpkg  = "kmod-drbd#{node['drbd']['version'].sub('.','')}"
+elsif node.platform_family?("debian", "ubuntu")
+  utilspkg = "drbd8-utils"
+  kmodpkg  = "drbd8-module"
+elsif node.platform_family?("suse")
+  # ugly hack: suse has only one package. I don't want to have seperate logic for it. So...
+  utilspkg = "drbd"
+  kmodpkg  = "drbd"
+else
+  log("Your platform (#{node.platform_family})is not explicitely supported by this cookbook, sorry"){ level :fatal}
+end
+
+[kmodpkg,utilspkg].each do |pkg|
+  log("Install #{pkg}")
+  package pkg do
+    action :install
+  end
 end
 
 service "drbd" do
