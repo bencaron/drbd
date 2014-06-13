@@ -1,0 +1,43 @@
+---
+
+
+DOES NOT WORK ; test-kitchen don't know how to make a disk file. So much to patch, so little time ;)
+
+driver:
+  name: vagrant
+    customize:
+      createhd:
+       filename: mydisk.vdi
+#      size: 1024
+#    storageattach:
+#      storagectl: 'SATA Controller'
+#      port: "1"
+#      device: "0"
+#      type: "hdd"
+#      medium: "test/mydisk.vdi"
+
+
+provisioner:
+  name: chef_solo
+  environments_path: "test/integration/environments"
+  data_bag_path: "test/integration/data_bags"
+  roles_path: "test/integration/roles"
+  require_chef_omnibus: 11.8.2
+  solo_rb:
+    environment: test
+
+platforms:
+  - name: rhel-6.5
+    driver:
+     box: rhel-6.5-x86_64
+     box_url: http://gustavo.lapresse.ca/vagrant/boxes/rhel-6.5-x86_64.box
+
+suites:
+- name: primary
+  run_list:
+    - role[drbd-master]
+  attributes:
+- name: secondary
+  run_list:
+    - role[drbd-master]
+  attributes:
