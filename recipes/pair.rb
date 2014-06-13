@@ -84,11 +84,22 @@ end
 #claim primary based off of node['drbd']['master']
 execute "drbdadm-set-primary-#{resource}" do
   command "drbdadm primary --force #{resource}"
- # subscribes :run, "execute[drbdadm up #{resource}]"
-  # ugly; just a "shellout" would be enough...
   not_if  {
-    ismountcmd = Mixlib::ShellOut.new("mount | grep #{node['drbd']['dev']}")
-    mounted = ismountcmd.run_command.status == 0
+    [
+      %Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"),
+      "mount | grep #{node['drbd']['dev']}"
+    ].each do |cmd|
+      cmd = Mixlib::ShellOut.new(cmd)
+      break true if cmd.run_command.status == 0
+    end
+
+#    isactivecmd = Mixlib::ShellOut.new(%Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"))
+#    isactive = isactivecmd.run_command.status == 0
+#    yield true if isactive
+#
+#    ismountcmd = Mixlib::ShellOut.new("mount | grep #{node['drbd']['dev']}")
+#    mounted = ismountcmd.run_command.status == 0
+#    yield true if mounted
   }
   only_if {
     cmd = Mixlib::ShellOut.new("drbdadm show-gi #{resource}")
@@ -104,20 +115,20 @@ end
 execute "mkfs-#{resource}" do
   command "mkfs -t #{node['drbd']['fs_type']} #{node['drbd']['dev']}"
   not_if  {
-    ismountcmd = Mixlib::ShellOut.new("mount | grep #{node['drbd']['dev']}")
-    mounted = ismountcmd.run_command.status == 0
-
-    hasfscmd = Mixlib::ShellOut.new("blkid | grep #{node['drbd']['dev']}} | grep #{node['drbd']['fs_type']}")
-    hasfs = hasfscmd.run_command.status == 0
-
-    mounted || hasfs
+    [
+      "mount | grep #{node['drbd']['dev']}",
+      "blkid | grep #{node['drbd']['dev']}} | grep #{node['drbd']['fs_type']}"
+    ].each do |cmd|
+      cmd = Mixlib::ShellOut.new(cmd)
+      break true if cmd.run_command.status == 0
+    end
   }
   only_if { node['drbd']['master'] && !node['drbd']['configured'] }
 end
 
 # prepare our mount point
 directory node['drbd']['mount'] do
-  only_if { node['drbd']['master'] && !node['drbd']['configured'] }
+  #only_if { node['drbd']['master'] && !node['drbd']['configured'] }
   action :create
 end
 
