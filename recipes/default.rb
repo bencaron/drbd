@@ -32,7 +32,7 @@ elsif node.platform_family?("suse")
   utilspkg = "drbd"
   kmodpkg  = "drbd"
 else
-  log("Your platform (#{node.platform_family})is not explicitely supported by this cookbook, sorry"){ level :fatal}
+  log("Your platform (#{node['platform_family']})is not explicitely supported by this cookbook, sorry"){ level :fatal}
 end
 
 [kmodpkg,utilspkg].each do |pkg|

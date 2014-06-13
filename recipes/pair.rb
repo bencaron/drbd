@@ -39,7 +39,7 @@ template "/etc/drbd.d/#{resource}.res" do
   variables(
     :resource => resource,
     :remote_ip => node['drbd']['remote_ip'] || remote.ipaddress,
-    :internal_ip => node['drbd']['internal_ip'] || node.ipaddress
+    :internal_ip => node['drbd']['internal_ip'] || node['ipaddress']
     )
   owner "root"
   group "root"
