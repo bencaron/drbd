@@ -1,0 +1,21 @@
+{
+  "name": "drbd-pair-secondary",
+  "chef_type": "role",
+  "json_class": "Chef::Role",
+  "description": "DRBD pair - master",
+  "default_attributes": {
+  "drbd" : {
+    "remote_host" : "primary",
+    "remote_ip" : "10.73.0.20",
+    "internal_ip" : "10.73.0.21",
+    "disk" : "/dev/sdb1",
+    "fs_type" : "ext4",
+    "mount" : "/shared",
+    "master" : false
+  }
+
+  },
+  "run_list": [
+  "recipe[drbd::pair]"
+  ]
+}
