@@ -20,10 +20,19 @@
 #prime the search to avoid 2 masters
 node.save unless Chef::Config[:solo]
 
+
 # Ok, why does the docs say "redhat" but my systems says rhel??
 if node.platform_family?("centos", "redhat", "rhel", "fedora")
   utilspkg = "drbd#{node['drbd']['version'].sub('.','')}-utils"
   kmodpkg  = "kmod-drbd#{node['drbd']['version'].sub('.','')}"
+
+  yum_repository 'elrepo' do
+    mirrorlist 'http://elrepo.org/mirrors-elrepo.el6'
+    description 'ELRepo.org Yum Repository'
+    enabled true
+    gpgcheck true
+    gpgkey 'http://www.elrepo.org/RPM-GPG-KEY-elrepo.org'
+  end
 elsif node.platform_family?("debian", "ubuntu")
   utilspkg = "drbd8-utils"
   kmodpkg  = "drbd8-module"
@@ -34,6 +43,8 @@ elsif node.platform_family?("suse")
 else
   log("Your platform (#{node['platform_family']})is not explicitely supported by this cookbook, sorry"){ level :fatal}
 end
+
+log "Installing DRBD from packages #{utilspkg} and #{kmodpkg}"
 
 [kmodpkg,utilspkg].each do |pkg|
   log("Install #{pkg}")
