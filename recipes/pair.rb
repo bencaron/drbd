@@ -58,7 +58,7 @@ template "/etc/drbd.d/global_common.conf" do
   action :create
 end
 
-#first pass only, initialize drbd
+# first pass only, initialize drbd
 execute "drbdadm-create-#{resource}" do
   command "drbdadm create-md #{resource}"
   subscribes :run, "template[/etc/drbd.d/#{resource}.res]"
@@ -71,9 +71,9 @@ execute "drbdadm-create-#{resource}" do
   end
 end
 
+# up the resource, but only if it's not
 execute "drbdadm-up-#{resource}" do
   command "drbdadm up #{resource}"
-#  only_if %Q( drbd-overview | grep "0:#{resource}/0  Unconfigured")
   not_if "drbdadm cstate pair"
   notifies :run, "execute[drbdadm-set-primary-#{resource}]"
 end
@@ -83,9 +83,6 @@ execute "drbdadm-set-primary-#{resource}" do
   command "drbdadm primary --force #{resource}"
   not_if  {
     [
-      #%Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"),
-      # don't do it if show-gi return true
-     # %Q(drbdadm show-gi #{resource}"),
       "mount | grep #{node['drbd']['dev']}"
     ].each do |shell|
       cmd = Mixlib::ShellOut.new(shell)
@@ -96,16 +93,6 @@ execute "drbdadm-set-primary-#{resource}" do
     false
   }
   only_if { node['drbd']['master'] && !node['drbd']['configured'] }
-  #  only_if {
-#    cmd = Mixlib::ShellOut.new("drbdadm show-gi #{resource}")
-#    overview = cmd.run_command
-#    output = overview.stdout
-#   # Chef::Log.info "set primary, only if : #{overview.stdout}"
-#    Chef::Log.info "set primary, only if : #{output}"
-#    # only go if master, not configured, and we never seen our peer
-#    #node['drbd']['master'] && !node['drbd']['configured'] && output.include?("need apply-al")
-#    output.include?("need apply-al")
-#  }
   notifies :run, "execute[mkfs-#{resource}]"
 end
 
@@ -134,6 +121,7 @@ end
 
 log "ran mkfs" do
   message "Device #{node['drbd']['dev']} is now formated as #{node['drbd']['fs_type']}"
+  level  :info
   action :nothing
 end
 
@@ -143,7 +131,7 @@ directory node['drbd']['mount'] do
 end
 
 # Mount it only on the primary
-# FIXME what to do if our primary is now turned into a secondary?
+# FIXME what to do if our primary is now manually/failoverly turned into a secondary?
 mount node['drbd']['mount'] do
   device node['drbd']['dev']
   fstype node['drbd']['fs_type']
@@ -151,14 +139,11 @@ mount node['drbd']['mount'] do
   action :mount
 end
 
-# FIXME Hum, no not_if/only_if?
+# If we are done, someone will notify us
 ruby_block "set drbd configured flag" do
   block do
     node.set['drbd']['configured'] = true
     Chef::Log.info "We are now configured"
   end
-  #subscribes :create, "execute[mkfs -t #{node['drbd']['fs_type']} #{node['drbd']['dev']}]"
-  #subscribes :mount, "mount[#{node['drbd']['mount']}]"
-  #action :run
   action :nothing
 end
