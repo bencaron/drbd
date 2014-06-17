@@ -21,7 +21,7 @@
 
 require 'mixlib/shellout'
 
-include_recipe "drbd"
+include_recipe "drbd::default"
 
 resource = "pair"
 
@@ -62,17 +62,20 @@ end
 execute "drbdadm-create-#{resource}" do
   command "drbdadm create-md #{resource}"
   subscribes :run, "template[/etc/drbd.d/#{resource}.res]"
-  notifies :run, "execute[drbdadm-up-#{resource}]", :immediately
+  notifies :run, "execute[drbdadm-up-#{resource}]"
   not_if do
-    cmd = Mixlib::ShellOut.new("drbdadm show-gi pair")
-    cmd.run_command.status == 0
+    cmd = Mixlib::ShellOut.new("drbdadm role #{resource}")
+    st = cmd.run_command.status
+    Chef::Log.info "Looking if for create-md ; not if : >drbdadm role #{resource}<: status = #{st}"
+    st == 0
   end
 end
 
 execute "drbdadm-up-#{resource}" do
   command "drbdadm up #{resource}"
-  only_if %Q( drbd-overview | grep "0:#{resource}/0  Unconfigured")
-  notifies :run, "execute[drbdadm-set-primary-#{resource}]", :immediately
+#  only_if %Q( drbd-overview | grep "0:#{resource}/0  Unconfigured")
+  not_if "drbdadm cstate pair"
+  notifies :run, "execute[drbdadm-set-primary-#{resource}]"
 end
 
 #claim primary based off of node['drbd']['master']
@@ -80,21 +83,30 @@ execute "drbdadm-set-primary-#{resource}" do
   command "drbdadm primary --force #{resource}"
   not_if  {
     [
-      %Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"),
+      #%Q(drbdadm show-gi #{resource} | egrep "flags: (Primary|Secondary)"),
+      # don't do it if show-gi return true
+     # %Q(drbdadm show-gi #{resource}"),
       "mount | grep #{node['drbd']['dev']}"
-    ].each do |cmd|
-      cmd = Mixlib::ShellOut.new(cmd)
-      break true if cmd.run_command.status == 0
+    ].each do |shell|
+      cmd = Mixlib::ShellOut.new(shell)
+      st = cmd.run_command.status
+      Chef::Log.info "Looking if we drbdadm set primary; not if : >#{shell}<: status = #{st}"
+      break true if st == 0
     end
+    false
   }
-  only_if {
-    cmd = Mixlib::ShellOut.new("drbdadm show-gi #{resource}")
-    overview = cmd.run_command
-    Chef::Log.info overview.stdout
-    # only go if master, not configured, and we never seen our peer
-    node['drbd']['master'] && !node['drbd']['configured'] && overview.stdout.include?("")
-  }
-  notifies :run, "execute[mkfs-#{resource}]", :immediately
+  only_if { node['drbd']['master'] && !node['drbd']['configured'] }
+  #  only_if {
+#    cmd = Mixlib::ShellOut.new("drbdadm show-gi #{resource}")
+#    overview = cmd.run_command
+#    output = overview.stdout
+#   # Chef::Log.info "set primary, only if : #{overview.stdout}"
+#    Chef::Log.info "set primary, only if : #{output}"
+#    # only go if master, not configured, and we never seen our peer
+#    #node['drbd']['master'] && !node['drbd']['configured'] && output.include?("need apply-al")
+#    output.include?("need apply-al")
+#  }
+  notifies :run, "execute[mkfs-#{resource}]"
 end
 
 #You may now create a filesystem on the device, use it as a raw block device
@@ -103,13 +115,23 @@ execute "mkfs-#{resource}" do
   not_if  {
     [
       "mount | grep #{node['drbd']['dev']}",
-      "blkid | grep #{node['drbd']['dev']}} | grep #{node['drbd']['fs_type']}"
-    ].each do |cmd|
-      cmd = Mixlib::ShellOut.new(cmd)
-      break true if cmd.run_command.status == 0
+      "blkid | grep #{node['drbd']['dev']} | grep #{node['drbd']['fs_type']}",
+      "drbdadm role #{resource} | grep Secondary",
+    ].each do |shell|
+      cmd = Mixlib::ShellOut.new(shell)
+      st = cmd.run_command.status
+      Chef::Log.info "Looking if we should mkfs: >#{shell}<: status = #{st}"
+      break true if st == 0
     end
+    false
   }
   only_if { node['drbd']['master'] && !node['drbd']['configured'] }
+  action :run
+  notifies :write, "log[ran mkfs]", :immediately
+end
+
+log "ran mkfs" do
+  action :nothing
 end
 
 # prepare our mount point on both primary and secondary (ready for failover)
@@ -124,7 +146,7 @@ mount node['drbd']['mount'] do
   fstype node['drbd']['fs_type']
   only_if { node['drbd']['master'] && node['drbd']['configured'] }
   action :mount
-  notifies :run, "ruby_block[set drbd configured flag]", :immediately
+  notifies :run, "ruby_block[set drbd configured flag]"
 end
 
 # FIXME Hum, no not_if/only_if?
@@ -134,5 +156,6 @@ ruby_block "set drbd configured flag" do
   end
   #subscribes :create, "execute[mkfs -t #{node['drbd']['fs_type']} #{node['drbd']['dev']}]"
   #subscribes :mount, "mount[#{node['drbd']['mount']}]"
-  action :run
+  #action :run
+  action :nothing
 end
