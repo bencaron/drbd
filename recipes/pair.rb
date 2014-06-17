@@ -66,7 +66,7 @@ execute "drbdadm-create-#{resource}" do
   not_if do
     cmd = Mixlib::ShellOut.new("drbdadm role #{resource}")
     st = cmd.run_command.status
-    Chef::Log.info "Looking if for create-md ; not if : >drbdadm role #{resource}<: status = #{st}"
+    Chef::Log.info "Checking if for create-md ; not if : >drbdadm role #{resource}<: status = #{st}"
     st == 0
   end
 end
@@ -90,7 +90,7 @@ execute "drbdadm-set-primary-#{resource}" do
     ].each do |shell|
       cmd = Mixlib::ShellOut.new(shell)
       st = cmd.run_command.status
-      Chef::Log.info "Looking if we drbdadm set primary; not if : >#{shell}<: status = #{st}"
+      Chef::Log.info "Checking if we drbdadm set primary; not if : >#{shell}<: status = #{st}"
       break true if st == 0
     end
     false
@@ -120,7 +120,7 @@ execute "mkfs-#{resource}" do
     ].each do |shell|
       cmd = Mixlib::ShellOut.new(shell)
       st = cmd.run_command.status
-      Chef::Log.info "Looking if we should mkfs: >#{shell}<: status = #{st}"
+      Chef::Log.info "Checking if we should mkfs: >#{shell}<: status = #{st}"
       break true if st == 0
     end
     false
@@ -128,9 +128,12 @@ execute "mkfs-#{resource}" do
   only_if { node['drbd']['master'] && !node['drbd']['configured'] }
   action :run
   notifies :write, "log[ran mkfs]", :immediately
+  notifies :run, "ruby_block[set drbd configured flag]"
+  notifies :mount, "mount[#{node['drbd']['mount']}]"
 end
 
 log "ran mkfs" do
+  message "Device #{node['drbd']['dev']} is now formated as #{node['drbd']['fs_type']}"
   action :nothing
 end
 
@@ -146,13 +149,13 @@ mount node['drbd']['mount'] do
   fstype node['drbd']['fs_type']
   only_if { node['drbd']['master'] && node['drbd']['configured'] }
   action :mount
-  notifies :run, "ruby_block[set drbd configured flag]"
 end
 
 # FIXME Hum, no not_if/only_if?
 ruby_block "set drbd configured flag" do
   block do
     node.set['drbd']['configured'] = true
+    Chef::Log.info "We are now configured"
   end
   #subscribes :create, "execute[mkfs -t #{node['drbd']['fs_type']} #{node['drbd']['dev']}]"
   #subscribes :mount, "mount[#{node['drbd']['mount']}]"
